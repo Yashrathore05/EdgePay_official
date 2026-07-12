@@ -125,13 +125,19 @@ app.get('/api/transactions/:id', (req, res) => {
   res.json(txn);
 });
 
-// Update transaction status
+// Update transaction status safely (whitelist fields to prevent arbitrary overwrite)
 app.patch('/api/transactions/:id', (req, res) => {
   const idx = transactions.findIndex(t => t.id === req.params.id);
   if (idx === -1) {
     return res.status(404).json({ error: 'Transaction not found' });
   }
-  transactions[idx] = { ...transactions[idx], ...req.body, updatedAt: new Date().toISOString() };
+  
+  const { status, responseMessage } = req.body;
+  const updates = {};
+  if (status !== undefined) updates.status = status;
+  if (responseMessage !== undefined) updates.responseMessage = responseMessage;
+
+  transactions[idx] = { ...transactions[idx], ...updates, updatedAt: new Date().toISOString() };
   saveJson(TXN_FILE, transactions);
   res.json(transactions[idx]);
 });
@@ -145,7 +151,10 @@ app.get('/api/analytics', (req, res) => {
   const totalAmount = transactions
     .filter(t => t.status === 'SUCCESS')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const gsmCount = transactions.filter(t => t.method === 'GSM').length;
+  
+  // Method mapping: USSD/WALLET are GSM/offline, ONLINE is online
+  const gsmCount = transactions.filter(t => t.method === 'USSD' || t.method === 'WALLET').length;
+  const onlineCount = transactions.filter(t => t.method === 'ONLINE').length;
 
   res.json({
     totalTransactions: total,
@@ -153,7 +162,7 @@ app.get('/api/analytics', (req, res) => {
     breakdown: { success, failed, pending },
     totalAmountProcessed: totalAmount,
     gsmTransactions: gsmCount,
-    onlineTransactions: total - gsmCount,
+    onlineTransactions: onlineCount,
     syncLogs: syncLogs.slice(-10),
   });
 });

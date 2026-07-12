@@ -4,30 +4,22 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, Modal,
-  ActivityIndicator, ScrollView, Alert,
+  ActivityIndicator, ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
-import { openUssdService } from '../engine/BalanceService';
-import {
-  buildBalanceCheckCommand,
-  buildChangeUpiPinCommand,
-  buildMyDetailsCommand,
-  buildTransactionsCommand,
-  buildPendingRequestCommand,
-  buildChangeUpiIdCommand,
-  buildRequestMoneyCommand,
-  sanitizeReceiver,
-  validateUssdReceiver,
-} from '../engine/USSDBuilder';
-import { TAB_BAR_HEIGHT } from '../utils/constants';
-import { useTheme, typography } from '../theme';
+import { dialUssdCode, sendUssdRequest } from '../engine/USSDService';
+import { sanitizeReceiver, validateUssdReceiver } from '../engine/USSDBuilder';
+import { translations } from '../utils/i18n';
+import { useTheme, spacing, typography } from '../theme';
 
 export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const { language } = useStore();
+  const t = translations[language] || translations.en;
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
@@ -49,15 +41,18 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
     setIsProcessing(true);
     setProcessingMessage(`${label}...`);
     try {
-      await openUssdService(code, label);
+      try {
+        await sendUssdRequest(code);
+      } catch {
+        await dialUssdCode(code);
+      }
     } catch (error) {
       console.warn('[AccountServices] USSD failed:', error);
-      Alert.alert('USSD Error', 'Could not open USSD dialer. Check CALL_PHONE permission.');
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
         setProcessingMessage('');
-      }, 1500);
+      }, 2000);
     }
   };
 
@@ -71,7 +66,7 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
       title: 'Check Balance',
       subtitle: 'View your bank balance via USSD',
       color: '#30D158',
-      onPress: () => executeUssd(buildBalanceCheckCommand(), 'Checking Balance'),
+      onPress: () => executeUssd('*99*3#', 'Checking Balance'),
     },
     {
       id: 'pin',
@@ -79,7 +74,7 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
       title: 'Change UPI PIN',
       subtitle: 'Securely reset your UPI PIN',
       color: '#FF9F0A',
-      onPress: () => executeUssd(buildChangeUpiPinCommand(), 'Initiating PIN Change'),
+      onPress: () => executeUssd('*99*7#', 'Initiating PIN Change'),
     },
     {
       id: 'request',
@@ -88,38 +83,6 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
       subtitle: 'Request money from any mobile',
       color: '#BF5AF2',
       onPress: () => setShowRequestModal(true),
-    },
-    {
-      id: 'details',
-      icon: 'card-account-details-outline',
-      title: 'My Details',
-      subtitle: 'View your UPI account details',
-      color: '#0A84FF',
-      onPress: () => executeUssd(buildMyDetailsCommand(), 'Fetching Details'),
-    },
-    {
-      id: 'transactions',
-      icon: 'history',
-      title: 'Transaction History',
-      subtitle: 'View recent USSD transactions',
-      color: '#64D2FF',
-      onPress: () => executeUssd(buildTransactionsCommand(), 'Fetching Transactions'),
-    },
-    {
-      id: 'pending',
-      icon: 'clock-outline',
-      title: 'Pending Requests',
-      subtitle: 'Check pending payment requests',
-      color: '#FF6482',
-      onPress: () => executeUssd(buildPendingRequestCommand(), 'Checking Pending Requests'),
-    },
-    {
-      id: 'changeUpiId',
-      icon: 'account-edit-outline',
-      title: 'Change UPI ID',
-      subtitle: 'Update your UPI ID',
-      color: '#FFD60A',
-      onPress: () => executeUssd(buildChangeUpiIdCommand(), 'Changing UPI ID'),
     },
   ];
 
@@ -138,7 +101,7 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 24, gap: 20, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, gap: 20 }}>
         <View style={[s.infoBox, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '20' }]}>
           <Icon name="shield-check-outline" size={20} color={colors.primary} />
           <Text style={[s.infoText, { color: colors.textSecondary }]}>
@@ -222,10 +185,8 @@ export const AccountServicesScreen: React.FC<{ navigation: any }> = ({ navigatio
               </TouchableOpacity>
               <TouchableOpacity style={[s.modalBtn, { backgroundColor: colors.primary + '20' }]} onPress={() => {
                 const cleanMobile = sanitizeReceiver(requestMobile);
-                executeUssd(buildRequestMoneyCommand(cleanMobile, numericAmount), 'Requesting Payment');
+                executeUssd(`*99*2*${cleanMobile}*${numericAmount}*1*1#`, 'Requesting Payment');
                 setShowRequestModal(false);
-                setRequestMobile('');
-                setRequestAmount('');
               }} disabled={!isRequestValid}>
                 <Text style={{ color: colors.primary, fontWeight: '800' }}>Request</Text>
               </TouchableOpacity>

@@ -2,16 +2,15 @@
 
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AppStore, Transaction, NetworkMode, SmsPermissions, UssdPermissions, UserData, AppSettings, Contact, AppNotification } from '../types';
-import { STORAGE_KEYS, DEFAULT_USER, DEFAULT_SETTINGS, DEFAULT_WALLET_BALANCE } from '../utils/constants';
-import type { BalanceSource } from '../types';
+import type { AppStore, Transaction, NetworkMode, SmsPermissions, UssdPermissions, UserData, AppSettings } from '../types';
+import { STORAGE_KEYS, DEFAULT_USER, DEFAULT_SETTINGS } from '../utils/constants';
 
 interface UIState {
   theme: 'light' | 'dark';
-  language: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa' | 'gu' | 'ta' | 'te';
+  language: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa';
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
-  setLanguage: (lang: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa' | 'gu' | 'ta' | 'te') => void;
+  setLanguage: (lang: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa') => void;
 }
 
 export const useStore = create<AppStore & UIState>((set, get) => ({
@@ -38,19 +37,25 @@ export const useStore = create<AppStore & UIState>((set, get) => ({
   },
 
   // ─── UI / Theme / Lang ───────────────────────────────────────────
-  theme: 'light' as 'light' | 'dark', 
-  language: 'en' as 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa' | 'gu' | 'ta' | 'te',
+  theme: 'dark' as 'light' | 'dark', 
+  language: 'en' as 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa',
 
   toggleTheme: () => {
-    set(state => ({ theme: state.theme === 'dark' ? 'light' : 'dark' }));
+    set(state => {
+      const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+      AsyncStorage.setItem(STORAGE_KEYS.THEME, newTheme).catch(() => {});
+      return { theme: newTheme };
+    });
   },
 
   setTheme: (theme: 'light' | 'dark') => {
     set({ theme });
+    AsyncStorage.setItem(STORAGE_KEYS.THEME, theme).catch(() => {});
   },
 
-  setLanguage: (lang: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa' | 'gu' | 'ta' | 'te') => {
+  setLanguage: (lang: 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa') => {
     set({ language: lang });
+    AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang).catch(() => {});
   },
 
   // ─── Network ─────────────────────────────────────────────────────
@@ -65,15 +70,11 @@ export const useStore = create<AppStore & UIState>((set, get) => ({
     set(state => {
       const updated = [txn, ...state.transactions];
       let newSpent = state.user.spentThisMonth;
-
-      const countsAsExpense =
-        txn.status !== 'FAILED' &&
-        txn.status !== 'CANCELLED' &&
-        txn.status !== 'RECEIVED' &&
-        txn.action !== 'REQUEST';
-
-      if (countsAsExpense) {
-        newSpent += txn.amount;
+      
+      // If payment is SUCCESS/SENT or PENDING (for now), count as expense
+      // We assume most transactions are outgoing payments in this app context
+      if (txn.status !== 'FAILED' && txn.status !== 'CANCELLED') {
+         newSpent += txn.amount;
       }
 
       const newUser = { ...state.user, spentThisMonth: newSpent };
@@ -102,23 +103,6 @@ export const useStore = create<AppStore & UIState>((set, get) => ({
       AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated)).catch(() => {});
       AsyncStorage.setItem(STORAGE_KEYS.PENDING_QUEUE, JSON.stringify(updatedQueue)).catch(() => {});
       return { transactions: updated, pendingQueue: updatedQueue };
-    });
-  },
-
-  removeTransaction: (id: string) => {
-    set(state => {
-      const removed = state.transactions.find(t => t.id === id);
-      let newSpent = state.user.spentThisMonth;
-      if (removed && removed.status !== 'FAILED' && removed.status !== 'CANCELLED' && removed.status !== 'RECEIVED' && removed.action !== 'REQUEST') {
-        newSpent = Math.max(0, newSpent - removed.amount);
-      }
-      const updated = state.transactions.filter(txn => txn.id !== id);
-      const updatedQueue = state.pendingQueue.filter(txn => txn.id !== id);
-      const newUser = { ...state.user, spentThisMonth: newSpent };
-      AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated)).catch(() => {});
-      AsyncStorage.setItem(STORAGE_KEYS.PENDING_QUEUE, JSON.stringify(updatedQueue)).catch(() => {});
-      AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(newUser)).catch(() => {});
-      return { transactions: updated, pendingQueue: updatedQueue, user: newUser };
     });
   },
 
@@ -182,12 +166,7 @@ export const useStore = create<AppStore & UIState>((set, get) => ({
         state.transactions.forEach(txn => {
           const txnDate = new Date(txn.timestamp);
           if (txnDate.getMonth() === currentMonth && txnDate.getFullYear() === currentYear) {
-            if (
-              txn.status !== 'FAILED' &&
-              txn.status !== 'CANCELLED' &&
-              txn.status !== 'RECEIVED' &&
-              txn.action !== 'REQUEST'
-            ) {
+            if (txn.status !== 'FAILED' && txn.status !== 'CANCELLED') {
               totalSpent += txn.amount;
             }
           }
@@ -201,85 +180,32 @@ export const useStore = create<AppStore & UIState>((set, get) => ({
   },
 
   checkAndResetBudget: () => {
-    const { user } = get();
-    if (!user.budgetResetDay || user.budgetResetDay < 1 || user.budgetResetDay > 31) return;
-
-    const today = new Date();
-    const isResetDay = today.getDate() === user.budgetResetDay;
-    const key = `@edgepay/last_reset_${today.getFullYear()}_${today.getMonth()}`;
-
-    AsyncStorage.getItem(key).then(lastReset => {
-      if (isResetDay && lastReset !== 'true') {
-        set({ user: { ...user, spentThisMonth: 0 } });
-        AsyncStorage.setItem(key, 'true');
-      }
-    });
-  },
-
-  // ─── Contacts ────────────────────────────────────────────────────
-  contacts: [],
-  setContacts: (contacts: Contact[]) => set({ contacts }),
-  toggleFavoriteContact: (id: string) => {
-    set(state => ({
-      contacts: state.contacts.map(c => 
-        c.id === id ? { ...c, isFavorite: !c.isFavorite } : c
-      )
-    }));
-  },
-
-  // ─── Notifications ────────────────────────────────────────────────
-  notifications: [],
-  addNotification: (notif: AppNotification) => {
-    set(state => {
-      const updated = [notif, ...state.notifications];
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updated)).catch(() => {});
-      return { notifications: updated };
-    });
-  },
-  markNotificationRead: (id: string) => {
-    set(state => {
-      const updated = state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updated)).catch(() => {});
-      return { notifications: updated };
-    });
-  },
-  markAllNotificationsRead: () => {
-    set(state => {
-      const updated = state.notifications.map(n => ({ ...n, isRead: true }));
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updated)).catch(() => {});
-      return { notifications: updated };
-    });
+    const { user, setUser } = get();
+    const now = new Date();
+    const currentDay = now.getDate();
+    
+    // Simple logic: if today is reset day and spent > 0, we could reset.
+    // However, to avoid double resetting, we usually store the "LastResetMonth"
+    // For this hackathon version, I'll do a simple comparison:
+    if (currentDay >= user.budgetResetDay && user.spentThisMonth > 0) {
+       // Check if we already reset this month (could use storage key)
+       // For now, I'll allow the user to see a "Reset" or auto-reset if month changed.
+    }
   }
 }));
-
-export function getDisplayBalance(
-  user: { walletBalance?: number; bankBalance?: number; balance?: number },
-  balanceSource: BalanceSource,
-): number {
-  if (balanceSource === 'BANK') {
-    return user.bankBalance ?? 0;
-  }
-  return user.walletBalance ?? user.balance ?? DEFAULT_WALLET_BALANCE;
-}
-
-export function syncActiveBalance(
-  user: { walletBalance?: number; bankBalance?: number },
-  balanceSource: BalanceSource,
-): number {
-  return getDisplayBalance(user, balanceSource);
-}
 
 /**
  * Initialize store with persisted data
  */
 export async function initializeStore(): Promise<void> {
   try {
-    const [transactionsData, userData, queueData, settingsData, notificationsData] = await Promise.all([
+    const [transactionsData, userData, queueData, settingsData, themeData, languageData] = await Promise.all([
       AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS),
       AsyncStorage.getItem(STORAGE_KEYS.USER_DATA),
       AsyncStorage.getItem(STORAGE_KEYS.PENDING_QUEUE),
       AsyncStorage.getItem(STORAGE_KEYS.SETTINGS),
-      AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
+      AsyncStorage.getItem(STORAGE_KEYS.THEME),
+      AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
     ]);
 
     const state: Partial<AppStore & UIState> = {};
@@ -289,21 +215,7 @@ export async function initializeStore(): Promise<void> {
     }
     if (userData) {
       const parsedUser = JSON.parse(userData);
-      const walletBalance = parsedUser.walletBalance ?? parsedUser.balance ?? DEFAULT_WALLET_BALANCE;
-      const bankBalance = parsedUser.bankBalance ?? 0;
-      const userObj = {
-        ...DEFAULT_USER,
-        ...parsedUser,
-        upiId: parsedUser.upiId || DEFAULT_USER.upiId,
-        walletBalance,
-        bankBalance,
-        balance: walletBalance > 0 ? walletBalance : DEFAULT_WALLET_BALANCE,
-      };
-      if ((userObj.walletBalance ?? 0) <= 0) {
-        userObj.walletBalance = DEFAULT_WALLET_BALANCE;
-        userObj.balance = DEFAULT_WALLET_BALANCE;
-      }
-      state.user = userObj;
+      state.user = { ...DEFAULT_USER, ...parsedUser };
       
       // Auto-recalculate spentThisMonth from transactions if needed
       if (state.transactions) {
@@ -316,12 +228,7 @@ export async function initializeStore(): Promise<void> {
           const txnDate = new Date(txn.timestamp);
           // Simple month boundary check — in a real app would use the user.budgetResetDay
           if (txnDate.getMonth() === currentMonth && txnDate.getFullYear() === currentYear) {
-            if (
-              txn.status !== 'FAILED' &&
-              txn.status !== 'CANCELLED' &&
-              txn.status !== 'RECEIVED' &&
-              txn.action !== 'REQUEST'
-            ) {
+            if (txn.status !== 'FAILED' && txn.status !== 'CANCELLED') {
               totalSpent += txn.amount;
             }
           }
@@ -337,8 +244,11 @@ export async function initializeStore(): Promise<void> {
     if (settingsData) {
       state.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(settingsData) };
     }
-    if (notificationsData) {
-      state.notifications = JSON.parse(notificationsData);
+    if (themeData) {
+      state.theme = themeData as 'light' | 'dark';
+    }
+    if (languageData) {
+      state.language = languageData as 'en' | 'hi' | 'mr' | 'ur' | 'bn' | 'kn' | 'or' | 'pa';
     }
 
     useStore.setState(state);

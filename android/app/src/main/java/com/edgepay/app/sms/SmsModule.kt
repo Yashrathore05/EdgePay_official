@@ -2,11 +2,13 @@ package com.edgepay.app.sms
 
 import android.Manifest
 import android.app.Activity
-import android.content.ComponentName
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
+import android.provider.Telephony
 import android.telephony.SmsManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -18,14 +20,8 @@ import com.facebook.react.modules.core.PermissionListener
 class SmsModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext), PermissionListener {
 
+    private var smsReceiver: BroadcastReceiver? = null
     private var permissionPromise: Promise? = null
-
-    private data class InboxMessage(
-        val sender: String,
-        val body: String,
-        val timestamp: Long,
-        val source: String,
-    )
 
     companion object {
         const val NAME = "SmsModule"
@@ -85,11 +81,38 @@ class SmsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun startSmsListener(promise: Promise) {
         try {
-            val intent = Intent(reactApplicationContext, SoundboxService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                reactApplicationContext.startForegroundService(intent)
+            if (smsReceiver != null) {
+                promise.resolve("Listener already active")
+                return
+            }
+
+            smsReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
+                        val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
+                        for (smsMessage in messages) {
+                            val smsData = Arguments.createMap().apply {
+                                putString("sender", smsMessage.displayOriginatingAddress)
+                                putString("body", smsMessage.displayMessageBody)
+                                putDouble("timestamp", smsMessage.timestampMillis.toDouble())
+                            }
+                            sendEvent(SMS_RECEIVED_EVENT, smsData)
+                        }
+                    }
+                }
+            }
+
+            val filter = IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
+            filter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                reactApplicationContext.registerReceiver(
+                    smsReceiver,
+                    filter,
+                    Context.RECEIVER_NOT_EXPORTED
+                )
             } else {
-                reactApplicationContext.startService(intent)
+                reactApplicationContext.registerReceiver(smsReceiver, filter)
             }
 
             promise.resolve("SMS listener started")
@@ -101,8 +124,10 @@ class SmsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopSmsListener(promise: Promise) {
         try {
-            val intent = Intent(reactApplicationContext, SoundboxService::class.java)
-            reactApplicationContext.stopService(intent)
+            smsReceiver?.let {
+                reactApplicationContext.unregisterReceiver(it)
+                smsReceiver = null
+            }
             promise.resolve("SMS listener stopped")
         } catch (e: Exception) {
             promise.reject("LISTENER_ERROR", "Failed to stop SMS listener: ${e.message}", e)
@@ -166,28 +191,6 @@ class SmsModule(reactContext: ReactApplicationContext) :
         promise.resolve(result)
     }
 
-    @ReactMethod
-    fun checkNotificationAccess(promise: Promise) {
-        promise.resolve(hasNotificationAccess())
-    }
-
-    @ReactMethod
-    fun openNotificationAccessSettings(promise: Promise) {
-        try {
-            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            reactApplicationContext.startActivity(intent)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject(
-                "NOTIFICATION_SETTINGS_ERROR",
-                "Failed to open notification listener settings: ${e.message}",
-                e
-            )
-        }
-    }
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
@@ -214,67 +217,33 @@ class SmsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun readRecentSms(count: Int, promise: Promise) {
         try {
-            val merged = mutableListOf<InboxMessage>()
-            val canReadSms = ContextCompat.checkSelfPermission(
-                reactApplicationContext,
-                Manifest.permission.READ_SMS
-            ) == PackageManager.PERMISSION_GRANTED
-
-            if (canReadSms) {
-                val cursor = reactApplicationContext.contentResolver.query(
-                    android.net.Uri.parse("content://sms/inbox"),
-                    arrayOf("address", "body", "date"),
-                    null,
-                    null,
-                    "date DESC LIMIT $count"
-                )
-
-                cursor?.use {
-                    while (it.moveToNext()) {
-                        merged.add(
-                            InboxMessage(
-                                sender = it.getString(0) ?: "",
-                                body = it.getString(1) ?: "",
-                                timestamp = it.getLong(2),
-                                source = "SMS",
-                            )
-                        )
-                    }
-                }
+            if (ContextCompat.checkSelfPermission(
+                    reactApplicationContext,
+                    Manifest.permission.READ_SMS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                promise.reject("PERMISSION_DENIED", "READ_SMS permission not granted")
+                return
             }
 
-            merged.addAll(
-                MessageNotificationStore
-                    .getCachedNotificationMessages(reactApplicationContext, count)
-                    .map {
-                        InboxMessage(
-                            sender = it.sender,
-                            body = it.body,
-                            timestamp = it.timestamp,
-                            source = it.source,
-                        )
-                    }
+            val cursor = reactApplicationContext.contentResolver.query(
+                android.net.Uri.parse("content://sms/inbox"),
+                arrayOf("address", "body", "date"),
+                null,
+                null,
+                "date DESC LIMIT $count"
             )
 
-            val deduped = linkedMapOf<String, InboxMessage>()
-            merged
-                .sortedByDescending { it.timestamp }
-                .forEach { msg ->
-                    val key = "${msg.source}|${msg.sender}|${msg.body}|${msg.timestamp}"
-                    if (!deduped.containsKey(key)) {
-                        deduped[key] = msg
-                    }
-                }
-
             val messages = Arguments.createArray()
-            deduped.values.take(count).forEach { msg ->
-                val sms = Arguments.createMap().apply {
-                    putString("sender", msg.sender)
-                    putString("body", msg.body)
-                    putDouble("timestamp", msg.timestamp.toDouble())
-                    putString("source", msg.source)
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val sms = Arguments.createMap().apply {
+                        putString("sender", it.getString(0) ?: "")
+                        putString("body", it.getString(1) ?: "")
+                        putDouble("timestamp", (it.getLong(2)).toDouble())
+                    }
+                    messages.pushMap(sms)
                 }
-                messages.pushMap(sms)
             }
 
             promise.resolve(messages)
@@ -291,16 +260,11 @@ class SmsModule(reactContext: ReactApplicationContext) :
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
-    }
-
-    private fun hasNotificationAccess(): Boolean {
-        val enabledListeners = Settings.Secure.getString(
-            reactApplicationContext.contentResolver,
-            "enabled_notification_listeners"
-        ) ?: return false
-
-        val component = ComponentName(reactApplicationContext, RcsNotificationListenerService::class.java)
-        return enabledListeners.contains(component.flattenToString()) ||
-            enabledListeners.contains(component.flattenToShortString())
+        smsReceiver?.let {
+            try {
+                reactApplicationContext.unregisterReceiver(it)
+            } catch (_: Exception) {}
+            smsReceiver = null
+        }
     }
 }

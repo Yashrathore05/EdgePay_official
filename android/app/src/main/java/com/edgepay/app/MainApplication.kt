@@ -9,8 +9,6 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.edgepay.app.sms.SmsPackage
 import com.edgepay.app.ussd.USSDPackage
 import com.edgepay.app.widget.PaymentWidgetPackage
-import com.edgepay.app.sim.SimManagerPackage
-import com.edgepay.app.accessibility.AccessibilityPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -22,8 +20,6 @@ class MainApplication : Application(), ReactApplication {
           add(SmsPackage())
           add(USSDPackage())
           add(PaymentWidgetPackage())
-          add(SimManagerPackage())
-          add(AccessibilityPackage())
         },
     )
   }
@@ -33,3 +29,4 @@ class MainApplication : Application(), ReactApplication {
     loadReactNative(this)
   }
 }
+

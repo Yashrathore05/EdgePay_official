@@ -3,7 +3,6 @@
 // Tuned for HDFC Bank (AD-HDFCBK-S) and SBI sender formats
 
 import type { SmsMessage } from '../types';
-import { parseSmsForBalance as parseBalanceSms } from './BalanceSmsParser';
 
 /**
  * SUCCESS patterns found in Indian bank debit confirmation SMS.
@@ -111,9 +110,31 @@ export function parseDemoSms(body: string) {
 }
 
 /**
- * Parse an incoming SMS to extract a numeric balance.
- * Delegates to BalanceSmsParser — ignores credit/debit payment SMS.
+ * Parse an incoming SMS to extract a numeric balance
+ * Example: "Your AC balance is ₹1,234.56" -> 1234
  */
 export function parseSmsForBalance(body: string): number | null {
-  return parseBalanceSms(body);
+  // Remove commas for easier parsing
+  const cleanBody = body.replace(/,/g, '');
+  
+  // Pattern 1: Rs. 1234 or ₹1234 (handles newlines between Rs and amount)
+  // Screenshot shows: Rs.\n168.59
+  const standardMatch = cleanBody.match(/(?:RS|₹)\.?\s*([0-9]+\.?[0-9]*)/i);
+  if (standardMatch && standardMatch[1]) {
+    return Math.floor(parseFloat(standardMatch[1]));
+  }
+  
+  // Pattern 2: "Avl Bal Rs 1234"
+  const noDotMatch = cleanBody.match(/BAL\s*[\n\r]*\s*(?:RS|₹)?\s*([0-9]+\.?[0-9]*)?/i);
+  if (noDotMatch && noDotMatch[1]) {
+    return Math.floor(parseFloat(noDotMatch[1]));
+  }
+
+  // Final fallback: just look for the first decimal number after "Rs" or "Bal"
+  const fallback = cleanBody.match(/(?:RS|₹|BAL|BALANCE)\s*[:.-]?\s*([0-9]+\.?[0-9]*)/i);
+  if (fallback && fallback[1]) {
+     return Math.floor(parseFloat(fallback[1]));
+  }
+
+  return null;
 }

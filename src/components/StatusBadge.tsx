@@ -18,7 +18,6 @@ const STATUS_LABELS: Record<TransactionStatus, string> = {
   FAILED: 'Failed',
   QUEUED: 'Queued',
   CANCELLED: 'Cancelled',
-  RECEIVED: 'Received',
 };
 
 const STATUS_ICONS: Record<TransactionStatus, string> = {
@@ -28,7 +27,6 @@ const STATUS_ICONS: Record<TransactionStatus, string> = {
   FAILED: '✕',
   QUEUED: '🔄',
   CANCELLED: '⊘',
-  RECEIVED: '📥',
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => {

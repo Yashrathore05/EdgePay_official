@@ -7,10 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class SmsPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(
-            SmsModule(reactContext),
-            SoundboxAudioModule(reactContext)
-        )
+        return listOf(SmsModule(reactContext))
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

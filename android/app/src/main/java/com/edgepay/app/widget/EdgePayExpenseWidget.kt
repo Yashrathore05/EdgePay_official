@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
 import android.widget.RemoteViews
 import com.edgepay.app.MainActivity
 import com.edgepay.app.R
@@ -53,10 +52,8 @@ class EdgePayExpenseWidget : AppWidgetProvider() {
             
             // Set hidden or subtle views if needed
             views.setProgressBar(R.id.expense_widget_progress, 100, Math.min(progress, 100), false)
-
-            val daysLeft = calculateDaysUntil(resetDay)
-            views.setTextViewText(R.id.expense_widget_spent, "₹${spent.toInt()} spent")
-            views.setTextViewText(R.id.expense_widget_budget, "Budget ₹${budget.toInt()} · ${daysLeft}d left")
+            
+            // Status Color based on budget
             if (progress >= 90 && budget > 0) {
                 views.setTextColor(R.id.expense_widget_percent, 0xFFFF453A.toInt()) // Red
             } else {
@@ -83,16 +80,6 @@ class EdgePayExpenseWidget : AppWidgetProvider() {
             val diff = target.timeInMillis - now.timeInMillis
             return (diff / (24 * 60 * 60 * 1000)).toInt()
         }
-    }
-
-    override fun onAppWidgetOptionsChanged(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-        newOptions: Bundle
-    ) {
-        updateWidget(context, appWidgetManager, appWidgetId)
-        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, ids: IntArray) {

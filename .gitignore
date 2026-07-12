@@ -74,6 +74,8 @@ yarn-error.log
 !.yarn/sdks
 !.yarn/versions
 
-# Temporary/local sensitive files
-keystore_base64.txt
+# Custom exclusions
+.docker-config/
+.bundle/
 tsc_output.txt
+*.log

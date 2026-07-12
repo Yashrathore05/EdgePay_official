@@ -8,7 +8,6 @@ interface GoalModalProps {
   currentGoal: number;
   onSave: (amount: number) => void;
   onClose: () => void;
-  themeColors?: any;
 }
 
 export const GoalModal: React.FC<GoalModalProps> = ({

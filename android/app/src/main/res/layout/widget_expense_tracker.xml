@@ -42,22 +42,17 @@
         android:textStyle="bold"
         android:layout_marginTop="-8dp" />
 
-    <!-- Spent / budget detail -->
+    <!-- Progress indication (Hidden numeric) -->
     <TextView
         android:id="@+id/expense_widget_spent"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="₹0 spent"
-        android:textColor="#CCFFFFFF"
-        android:textSize="11sp"
-        android:layout_marginTop="8dp" />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
     <TextView
         android:id="@+id/expense_widget_budget"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Budget ₹0"
-        android:textColor="#99FFFFFF"
-        android:textSize="10sp" />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
     <ProgressBar
          android:id="@+id/expense_widget_progress"
          android:layout_width="match_parent"

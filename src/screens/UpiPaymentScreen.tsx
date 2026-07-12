@@ -126,10 +126,10 @@ export const UpiPaymentScreen: React.FC<{ navigation: any; route: any }> = ({
 
   const onPinVerified = (pin: string) => {
     setShowPinEntry(false);
-    executeUpiPayment(pin);
+    executeUpiPayment();
   };
 
-  const executeUpiPayment = async (enteredPin: string) => {
+  const executeUpiPayment = async () => {
     if (executionLocked.current) return;
     setIsSending(true);
     executionLocked.current = true;
@@ -144,10 +144,6 @@ export const UpiPaymentScreen: React.FC<{ navigation: any; route: any }> = ({
       executionLocked.current = false;
       return;
     }
-
-    // Set the UPI PIN in the accessibility auto-fill module
-    const { AccessibilityBridge } = require('../engine/AccessibilityBridge');
-    await AccessibilityBridge.setAutoFillPin(enteredPin, true);
 
     const txn = createTransaction(numericAmount, phoneNumber, payeeName || undefined, networkMode, 'USSD');
     addTransaction({ ...txn, upiId: upiId });
@@ -164,8 +160,6 @@ export const UpiPaymentScreen: React.FC<{ navigation: any; route: any }> = ({
       setTxnStatus('FAILED');
       setStatusMessage('UPI transaction failed.');
     } finally {
-      // Clear the auto-fill PIN immediately for privacy
-      await AccessibilityBridge.clearAutoFillData();
       setIsSending(false);
       setTimeout(() => { executionLocked.current = false; }, 3000);
     }

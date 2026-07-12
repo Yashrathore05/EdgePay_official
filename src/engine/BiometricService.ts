@@ -33,17 +33,90 @@ export async function authenticate(promptMessage?: string): Promise<boolean> {
   }
 }
 
-// Simple hash for PIN (not cryptographic — for local app use only)
-export function hashPin(pin: string): string {
-  let hash = 0;
-  for (let i = 0; i < pin.length; i++) {
-    const char = pin.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
+// Secure SHA-256 implementation in pure JS
+function sha256(ascii: string): string {
+  function rightRotate(value: number, amount: number) {
+    return (value >>> amount) | (value << (32 - amount));
   }
-  return Math.abs(hash).toString(36) + pin.length;
+  const words: number[] = [];
+  const asciiLength = ascii.length * 8;
+  let hash = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+  ];
+  const k = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ];
+  let w: number[] = [];
+  const asciiWords: number[] = [];
+  for (let i = 0; i < ascii.length; i++) {
+    const charCode = ascii.charCodeAt(i);
+    const wordIdx = i >> 2;
+    asciiWords[wordIdx] = (asciiWords[wordIdx] || 0) | (charCode << (24 - (i & 3) * 8));
+  }
+  const totalWords = ((asciiLength + 64) >> 9 << 4) + 15;
+  for (let i = 0; i <= totalWords; i++) {
+    words[i] = asciiWords[i] || 0;
+  }
+  words[ascii.length >> 2] |= 0x80 << (24 - (ascii.length & 3) * 8);
+  words[totalWords] = asciiLength;
+  for (let blockIdx = 0; blockIdx < words.length; blockIdx += 16) {
+    w = words.slice(blockIdx, blockIdx + 16);
+    let a = hash[0], b = hash[1], c = hash[2], d = hash[3], e = hash[4], f = hash[5], g = hash[6], h = hash[7];
+    for (let i = 0; i < 64; i++) {
+      if (i >= 16) {
+        const w15 = w[i - 15], w2 = w[i - 2], w16 = w[i - 16], w7 = w[i - 7];
+        const s0 = rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3);
+        const s1 = rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10);
+        w[i] = (w16 + s0 + w7 + s1) | 0;
+      }
+      const S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + k[i] + w[i]) | 0;
+      const S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) | 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) | 0;
+    }
+    hash[0] = (hash[0] + a) | 0;
+    hash[1] = (hash[1] + b) | 0;
+    hash[2] = (hash[2] + c) | 0;
+    hash[3] = (hash[3] + d) | 0;
+    hash[4] = (hash[4] + e) | 0;
+    hash[5] = (hash[5] + f) | 0;
+    hash[6] = (hash[6] + g) | 0;
+    hash[7] = (hash[7] + h) | 0;
+  }
+  let hashStr = '';
+  for (let i = 0; i < 8; i++) {
+    let wordStr = (hash[i] >>> 0).toString(16);
+    while (wordStr.length < 8) {
+      wordStr = '0' + wordStr;
+    }
+    hashStr += wordStr;
+  }
+  return hashStr;
+}
+
+export function hashPin(pin: string): string {
+  // Hash the PIN using secure SHA-256 with a salt prefix
+  return sha256('edgepay_salt_' + pin);
 }
 
 export function verifyPin(pin: string, storedHash: string): boolean {
   return hashPin(pin) === storedHash;
 }
+

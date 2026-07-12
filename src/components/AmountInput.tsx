@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { View, Text, TextInput, StyleSheet, Animated, Easing } from 'react-native';
-import { useTheme, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography } from '../theme';
 
 interface AmountInputProps {
   value: string;
@@ -28,7 +28,6 @@ export const AmountInput = forwardRef<TextInput, AmountInputProps>(({
   const inputRef = useRef<TextInput>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [isFocused, setIsFocused] = useState(false);
-  const { colors } = useTheme();
 
   // Expose the inner TextInput ref to the parent
   useImperativeHandle(ref, () => inputRef.current as TextInput);
@@ -63,17 +62,17 @@ export const AmountInput = forwardRef<TextInput, AmountInputProps>(({
   };
 
   return (
-    <View style={[styles.outerContainer, { borderColor: isFocused ? colors.primary : colors.border }]}>
+    <View style={[styles.outerContainer, isFocused && styles.outerContainerFocused]}>
       <Animated.View
         style={[
           styles.container,
-          { backgroundColor: colors.surfaceElevated, transform: [{ scale: scaleAnim }] },
+          { transform: [{ scale: scaleAnim }] },
         ]}
       >
-        <Text style={[styles.currency, { color: colors.textTertiary }]}>{currency}</Text>
+        <Text style={styles.currency}>{currency}</Text>
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: colors.textPrimary }]}
+          style={styles.input}
           value={value}
           onChangeText={handleChange}
           placeholder={placeholder}
@@ -98,10 +97,15 @@ const styles = StyleSheet.create({
   outerContainer: {
     borderRadius: borderRadius.xl,
     borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  outerContainerFocused: {
+    borderColor: colors.primary,
   },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.surfaceElevated,
     borderRadius: borderRadius.xl,
     paddingHorizontal: spacing['2xl'],
     paddingVertical: spacing.xl,
@@ -110,12 +114,14 @@ const styles = StyleSheet.create({
   currency: {
     fontSize: 36,
     fontWeight: '300',
+    color: colors.textTertiary,
     lineHeight: 44,
   },
   input: {
     flex: 1,
     fontSize: 42,
     fontWeight: '700',
+    color: colors.textPrimary,
     padding: 0,
     lineHeight: 50,
     letterSpacing: -1,
