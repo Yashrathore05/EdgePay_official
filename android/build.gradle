@@ -1,8 +1,3 @@
-// Workaround for Gradle 9.0+ JCenter method removal in third-party library builds
-org.gradle.api.artifacts.dsl.RepositoryHandler.metaClass.jcenter = { ->
-    mavenCentral()
-}
-
 buildscript {
     ext {
         buildToolsVersion = "36.0.0"
