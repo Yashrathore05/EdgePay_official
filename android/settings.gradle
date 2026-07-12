@@ -1,3 +1,10 @@
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'com.edgepay.app'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+
 gradle.beforeProject { project ->
     project.repositories.metaClass.jcenter = { ->
         delegate.mavenCentral()
@@ -6,10 +13,3 @@ gradle.beforeProject { project ->
         delegate.mavenCentral()
     }
 }
-
-pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
-plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
-rootProject.name = 'com.edgepay.app'
-include ':app'
-includeBuild('../node_modules/@react-native/gradle-plugin')
